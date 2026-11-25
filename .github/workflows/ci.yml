@@ -104,9 +104,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${EVENT_NAME}" = "pull_request" ]; then
-            gitleaks git --no-banner --redact --log-opts="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+            gitleaks git --no-banner --redact --log-opts="-m ${PR_BASE_SHA}..${PR_HEAD_SHA}"
           else
-            gitleaks git --no-banner --redact
+            gitleaks git --no-banner --redact --log-opts="-m --all --full-history --diff-filter=tuxdb"
           fi
 
   # Deploys to your production server after `verify` passes on a push to main.
