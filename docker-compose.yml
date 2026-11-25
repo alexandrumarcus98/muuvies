@@ -1,0 +1,110 @@
+name: muuvies
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. FastAPI Media Search & AI Release Assistant
+  # ----------------------------------------------------------------------------
+  media-search:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: media-search
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 768m
+    ports:
+      - "${APP_BIND_HOST:-127.0.0.1}:8888:8888"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+      # Mount only the seedbox SFTP key + known_hosts entry (used for streaming), not all of ~/.ssh.
+      - ${SEEDBOX_SSH_DIR:-${HOME}/.config/muuvies/seedbox-ssh}:/home/appuser/.ssh:ro
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8888
+      - DATABASE_URL=sqlite+aiosqlite:///data/media_search.db
+      - QBITTORRENT_URL=http://seedbox-tunnel:${QB_PORT:-8080}
+      - PROWLARR_URL=http://seedbox-tunnel:${PROWLARR_PORT:-9696}
+      - RADARR_URL=http://seedbox-tunnel:${RADARR_PORT:-7878}
+      - SONARR_URL=http://seedbox-tunnel:${SONARR_PORT:-8989}
+      - WHISPARR_URL=http://seedbox-tunnel:${WHISPARR_PORT:-6969}
+      - CROSS_SEED_URL=http://seedbox-tunnel:${CROSS_SEED_PORT:-2468}
+    depends_on:
+      - seedbox-tunnel
+    networks:
+      - media-net
+      - proxy-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------------------------------
+  # 2. autossh Multiplexed Tunnel to Remote Seedbox
+  # ----------------------------------------------------------------------------
+  seedbox-tunnel:
+    image: alpine:3.24
+    container_name: seedbox-tunnel
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    # Install autossh and openssh-client, then establish persistent tunnel
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache autossh openssh-client bash
+        mkdir -p /root/.ssh
+        cp -r /tmp/.ssh_mount/* /root/.ssh/ 2>/dev/null || true
+        chmod 700 /root/.ssh
+        chmod 600 /root/.ssh/* 2>/dev/null || true
+        echo "Starting persistent autossh tunnel to ${SEEDBOX_USER:-seedbox}@${SEEDBOX_HOST:-seedbox.example.invalid}..."
+        export AUTOSSH_GATETIME=0
+        export AUTOSSH_POLL=30
+        exec autossh -M 0 -N \
+          -o Compression=no \
+          -o ServerAliveInterval=15 \
+          -o ServerAliveCountMax=3 \
+          -o TCPKeepAlive=yes \
+          -o IPQoS=lowdelay \
+          -o Ciphers=aes128-gcm@openssh.com,chacha20-poly1305@openssh.com \
+          -o StrictHostKeyChecking=yes \
+          -o ExitOnForwardFailure=yes \
+          -o GatewayPorts=yes \
+          -L "0.0.0.0:${QB_PORT:-8080}:${SEEDBOX_INTERNAL_HOST:-127.0.0.1}:${QB_REMOTE_PORT:-8080}" \
+          -L "0.0.0.0:${PROWLARR_PORT:-9696}:${SEEDBOX_INTERNAL_HOST:-127.0.0.1}:${PROWLARR_REMOTE_PORT:-9696}" \
+          -L "0.0.0.0:${WHISPARR_PORT:-6969}:${SEEDBOX_INTERNAL_HOST:-127.0.0.1}:${WHISPARR_REMOTE_PORT:-6969}" \
+          -L "0.0.0.0:${CROSS_SEED_PORT:-2468}:${SEEDBOX_INTERNAL_HOST:-127.0.0.1}:${CROSS_SEED_REMOTE_PORT:-2468}" \
+          -L "0.0.0.0:${RADARR_PORT:-7878}:${SEEDBOX_INTERNAL_HOST:-127.0.0.1}:${RADARR_REMOTE_PORT:-7878}" \
+          -L "0.0.0.0:${SONARR_PORT:-8989}:${SEEDBOX_INTERNAL_HOST:-127.0.0.1}:${SONARR_REMOTE_PORT:-8989}" \
+          "${SEEDBOX_USER:-seedbox}@${SEEDBOX_HOST:-seedbox.example.invalid}"
+    volumes:
+      - ${SEEDBOX_SSH_DIR:-${HOME}/.config/muuvies/seedbox-ssh}:/tmp/.ssh_mount:ro
+    ports:
+      # Expose tunneled seedbox ports on localhost only for local administration
+      - "127.0.0.1:${QB_PORT:-8080}:${QB_PORT:-8080}"
+      - "127.0.0.1:${PROWLARR_PORT:-9696}:${PROWLARR_PORT:-9696}"
+      - "127.0.0.1:${WHISPARR_PORT:-6969}:${WHISPARR_PORT:-6969}"
+      - "127.0.0.1:${CROSS_SEED_PORT:-2468}:${CROSS_SEED_PORT:-2468}"
+      - "127.0.0.1:${RADARR_PORT:-7878}:${RADARR_PORT:-7878}"
+      - "127.0.0.1:${SONARR_PORT:-8989}:${SONARR_PORT:-8989}"
+    networks:
+      - media-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# External reverse proxy (e.g. Caddy) reaches media-search over the shared `proxy-net` network.
+networks:
+  media-net:
+    driver: bridge
+  proxy-net:
+    name: proxy-net
+    external: true

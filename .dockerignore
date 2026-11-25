@@ -1,0 +1,30 @@
+# The image only needs backend/ and pyproject.toml (see Dockerfile).
+# Keep secrets, live data and dev clutter out of the build context.
+.git
+.github
+.githooks
+.agents
+.agent
+.claude
+.env
+.env.*
+data
+data.*
+.fernet_key
+*.pem
+*.key
+.venv
+venv
+node_modules
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.coverage
+htmlcov
+tests
+docs
+frontend/node_modules
+deploy
+scripts
+# Built inside the image by the frontend-builder stage; never copy a local build in.
+backend/static/app
