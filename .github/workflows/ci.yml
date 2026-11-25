@@ -71,6 +71,44 @@ jobs:
       - name: Validate Docker Compose config
         run: docker compose config --quiet
 
+  secret-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: ci-secret-scan-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install Gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          checksums="gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          base_url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -fsSLO "${base_url}/${archive}"
+          curl -fsSLO "${base_url}/${checksums}"
+          grep " ${archive}\$" "${checksums}" | sha256sum -c -
+          tar -xzf "${archive}" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f "${archive}" "${checksums}" gitleaks
+      - name: Run Gitleaks
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            gitleaks git --no-banner --redact --log-opts="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          else
+            gitleaks git --no-banner --redact
+          fi
+
   # Deploys to your production server after `verify` passes on a push to main.
   # When SSH is gated behind WireGuard, the runner joins the VPN as the CI peer
   # from DEPLOY_WG_CONFIG, then SSHes to DEPLOY_HOST. The key in DEPLOY_SSH_KEY
@@ -78,7 +116,7 @@ jobs:
   # and to the CI peer's address. See "Deploying" in README.md.
   deploy:
     name: Deploy to production
-    needs: verify
+    needs: [verify, secret-scan]
     # Skipped until the repository variable DEPLOY_ENABLED is set to "true"
     # (also the switch to pause deploys).
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
