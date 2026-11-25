@@ -1,0 +1,185 @@
+/* Workspace layout: two-tier hairline header on desktop (matching malex-dashboard),
+   bottom bar + menu on phones. */
+.ws-header {
+  position: relative;
+  z-index: 45;
+  border-bottom: 1px solid var(--bp-line);
+}
+
+.ws-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem clamp(1rem, 4vw, 3rem);
+}
+
+.ws-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem clamp(1rem, 4vw, 3rem);
+  border-top: 1px solid var(--bp-line);
+}
+
+/* Text navigation: sentence case, subtle surface pill when active (dashboard style). */
+.ws-link,
+.ws-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0.42rem 0.65rem;
+  min-height: 36px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: 500 14px/1.2 var(--f-sans);
+  color: var(--bp-muted);
+  text-decoration: none;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.12s ease-out, background-color 0.12s ease-out;
+}
+
+.ws-link:hover,
+.ws-tab:hover {
+  color: var(--bp-ink);
+  background: color-mix(in srgb, var(--bp-ink) 5%, transparent);
+}
+
+.ws-link[aria-current='page'],
+.ws-tab[aria-current='page'] {
+  color: var(--bp-ink);
+}
+
+.ws-subnav .ws-link[aria-current='page'] {
+  background: var(--bp-surface);
+}
+
+.ws-subnav .ws-link[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 0.65rem;
+  right: 0.65rem;
+  bottom: 0.15rem;
+  height: 2px;
+  background: var(--bp-red);
+}
+
+.ws-link:focus-visible,
+.ws-tab:focus-visible {
+  outline: 2px solid var(--bp-red);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.ws-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ws-section-nav {
+  gap: clamp(0.75rem, 2vw, 1.5rem) !important;
+}
+
+.ws-actions {
+  gap: clamp(0.6rem, 1.6vw, 1.25rem) !important;
+}
+
+.ws-count {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--bp-muted);
+}
+
+.ws-vault.is-open {
+  color: var(--bp-red-text);
+}
+
+.ws-user {
+  font: 500 14px/1.2 var(--f-sans);
+  color: var(--bp-muted);
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--bp-line);
+}
+
+.ws-signout {
+  color: var(--bp-ink);
+}
+
+.ws-tab {
+  flex: 1;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.ws-tab[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  top: -0.5rem;
+  height: 2px;
+  background: var(--bp-red);
+}
+
+.ws-menu-btn {
+  display: none;
+}
+
+.ws-bottom-nav {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+}
+
+@media (min-width: 900px) {
+  .ws-bottom-nav {
+    display: none !important;
+  }
+}
+
+@media (max-width: 899px) {
+  .ws-subnav {
+    display: none;
+  }
+
+  .ws-menu-btn {
+    display: inline-flex;
+  }
+
+  .ws-actions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding: 1rem clamp(1rem, 4vw, 3rem) 1.25rem;
+    background: var(--bp-surface);
+    border-bottom: 1px solid var(--bp-line);
+    box-shadow: 0 24px 48px -24px rgba(15, 0, 0, 0.6);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition:
+      opacity 0.25s ease,
+      transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+      visibility 0s linear 0.35s;
+  }
+
+  .ws-actions.is-open {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition:
+      opacity 0.25s ease,
+      transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+      visibility 0s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-actions,
+  .ws-actions.is-open {
+    transition: none;
+  }
+}
