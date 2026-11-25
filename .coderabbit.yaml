@@ -1,0 +1,25 @@
+language: "en-US"
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!frontend/pnpm-lock.yaml"
+    - "!backend/static/**"
+  path_instructions:
+    - path: "backend/app/**"
+      instructions: |
+        Review FastAPI routers and services for SSRF protections, SQLite WAL/FTS5 safety,
+        Adult Vault privacy/isolation, and proper secret/credential handling.
+    - path: "frontend/src/**"
+      instructions: |
+        Check React 19 + TypeScript code for AbortController cancellation, reduced-motion support,
+        and clean error/loading state handling.
+    - path: "scripts/**"
+      instructions: |
+        Verify backup/deploy scripts safely handle SQLite WAL + .fernet_key and avoid destructive defaults.

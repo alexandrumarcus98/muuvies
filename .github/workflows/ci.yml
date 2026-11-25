@@ -1,0 +1,157 @@
+name: Muuvies CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths-ignore: ["**.md", "plans/**"]
+  push:
+    branches: [develop, main]
+    paths-ignore: ["**.md", "plans/**"]
+
+jobs:
+  verify:
+    name: Pytest, React build & Compose
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Install Python and project dependencies
+        run: |
+          uv python install 3.13
+          uv sync --all-extras
+
+      - name: Provision CI environment file
+        run: |
+          if [ ! -f .env ]; then
+            cp .env.example .env
+          fi
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # Before pytest: the auth-page tests check that FastAPI serves the built
+      # SPA (backend/static/app/index.html), which only exists after this build.
+      - name: Build and typecheck React frontend
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm build
+
+      - name: Run pytest suite
+        env:
+          ENVIRONMENT: test
+          SENTRY_DSN: ""
+          COOKIE_SECURE: "false"
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          ADMIN_PASSWORD: ci-test-admin-password
+          VAULT_PIN: "1234"
+        run: uv run pytest tests/ -v
+
+      - name: Validate Docker Compose config
+        run: docker compose config --quiet
+
+  # Deploys to your production server after `verify` passes on a push to main.
+  # When SSH is gated behind WireGuard, the runner joins the VPN as the CI peer
+  # from DEPLOY_WG_CONFIG, then SSHes to DEPLOY_HOST. The key in DEPLOY_SSH_KEY
+  # can be pinned on the server to a forced command (`scripts/deploy.sh --ssh`)
+  # and to the CI peer's address. See "Deploying" in README.md.
+  deploy:
+    name: Deploy to production
+    needs: verify
+    # Skipped until the repository variable DEPLOY_ENABLED is set to "true"
+    # (also the switch to pause deploys).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Install deploy credentials
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_WG_CONFIG: ${{ secrets.DEPLOY_WG_CONFIG }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ] || [ -z "$DEPLOY_WG_CONFIG" ]; then
+            echo "::error::Repository secrets DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS and DEPLOY_WG_CONFIG are all required."
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          (umask 077; printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key)
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          sudo install -m 700 -d /etc/wireguard
+          printf '%s\n' "$DEPLOY_WG_CONFIG" | sudo sh -c 'umask 077; cat > /etc/wireguard/wg-ci.conf'
+
+      - name: Join the server's WireGuard
+        run: |
+          if ! command -v wg-quick >/dev/null; then
+            sudo apt-get install -y -qq wireguard-tools >/dev/null \
+              || { sudo apt-get update -qq && sudo apt-get install -y -qq wireguard-tools >/dev/null; }
+          fi
+          sudo wg-quick up wg-ci
+
+      - name: Deploy ${{ github.sha }}
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
+          DEPLOY_DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
+        # The first packets also complete the WireGuard handshake, so retry
+        # connection failures (ssh exit 255) a few times. Any other exit code
+        # is deploy.sh's own verdict and is returned as-is.
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::error::Repository variable DEPLOY_HOST is required."
+            exit 1
+          fi
+          for attempt in 1 2 3 4; do
+            rc=0
+            ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              ${DEPLOY_DOMAIN:+-o HostKeyAlias="$DEPLOY_DOMAIN"} \
+              -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              -o ServerAliveInterval=30 \
+              "$DEPLOY_USER@$DEPLOY_HOST" "$GITHUB_SHA" || rc=$?
+            if [ "$rc" -ne 255 ]; then
+              exit "$rc"
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "::warning::Could not reach $DEPLOY_HOST over SSH (attempt $attempt of 4); retrying in 15s."
+              sleep 15
+            fi
+          done
+          echo "::error::Could not reach $DEPLOY_HOST over SSH through WireGuard. Nothing was deployed."
+          sudo wg show wg-ci | grep -E 'endpoint|handshake|transfer' || true
+          exit 255
+
+      - name: Leave WireGuard and remove credentials
+        if: always()
+        run: |
+          sudo wg-quick down wg-ci 2>/dev/null || true
+          sudo rm -f /etc/wireguard/wg-ci.conf
+          rm -f ~/.ssh/deploy_key
