@@ -1,5 +1,8 @@
 # ⚡ Muuvies: Unified Media Search, AI Release Assistant & Seedbox Control Plane
 
+[![Muuvies CI](https://github.com/alexandrumarcus98/muuvies/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandrumarcus98/muuvies/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A self-hosted unified media search engine, AI release curation assistant, and seedbox control plane. Built with Python 3.13, FastAPI, SQLite (`aiosqlite` + SQLAlchemy async), Google GenAI SDK (`google-genai`), and a React 19 + TypeScript frontend built with Vite.
 
 Designed to run locally or on a VPS via **Docker Compose** or native **systemd user services**, and connect securely to your remote **seedbox (`SEEDBOX_HOST`)** through an encrypted `autossh` multiplexed tunnel.
