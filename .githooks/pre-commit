@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Git pre-commit hook to reject commits containing secrets, database files, and private credentials.
+
+set -e
+
+# Disallowed file extensions and patterns
+DISALLOWED_FILES=(
+    '\.env$'
+    '\.env\..+$'
+    '\.db$'
+    '\.sqlite.*$'
+    '\.key$'
+    'id_rsa$'
+    'id_ed25519$'
+)
+
+# Allowed exceptions
+ALLOWED_EXCEPTIONS=(
+    '\.env\.example$'
+)
+
+echo "🔍 Running pre-commit secret and hygiene checks..."
+
+# 1. Check staged filenames
+STAGED_FILES=$(git diff --cached --name-only)
+
+for FILE in $STAGED_FILES; do
+    # Skip allowed exceptions
+    is_allowed=0
+    for ALLOWED in "${ALLOWED_EXCEPTIONS[@]}"; do
+        if echo "$FILE" | grep -Eq "$ALLOWED"; then
+            is_allowed=1
+            break
+        fi
+    done
+    if [ $is_allowed -eq 1 ]; then
+        continue
+    fi
+
+    for PATTERN in "${DISALLOWED_FILES[@]}"; do
+        if echo "$FILE" | grep -Eq "$PATTERN"; then
+            echo "❌ [SECURITY ERROR] Attempting to commit restricted file: $FILE"
+            echo "   Please unstage this file: git rm --cached $FILE"
+            exit 1
+        fi
+    done
+done
+
+# 2. Check staged content for hardcoded secrets/API keys
+SUSPICIOUS_PATTERNS=(
+    'AIzaSy[0-9A-Za-z_\-]{33}'                              # Google API Key
+    'ghp_[0-9A-Za-z]{36}'                                   # GitHub Personal Access Token
+    'github_pat_[0-9A-Za-z_]{82}'                           # Fine-grained GitHub PAT
+    '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'  # Private keys
+)
+
+for PATTERN in "${SUSPICIOUS_PATTERNS[@]}"; do
+    MATCHES=$(git diff --cached -G "$PATTERN" --name-only || true)
+    if [ -n "$MATCHES" ]; then
+        echo "❌ [SECURITY ERROR] Staged diff appears to contain hardcoded secrets matching pattern: $PATTERN in $MATCHES"
+        echo "   Please remove the credential from your changes before committing."
+        exit 1
+    fi
+done
+
+echo "✅ Pre-commit hygiene checks passed."
+exit 0

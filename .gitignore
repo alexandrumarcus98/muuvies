@@ -1,0 +1,70 @@
+# Environments & Virtual Envs
+.venv/
+venv/
+ENV/
+env/
+uv.lock
+
+# Secrets, Keys & Credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.id_rsa
+*.id_ed25519
+*.secret*
+.fernet_key
+known_hosts
+docker-compose.override.yml
+
+# SQLite & Runtime Storage
+data/*
+!data/.gitkeep
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/*.sqlite*
+data/.fernet_key
+*.db
+*.sqlite
+*.sqlite3
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node & Frontend Build Artifacts
+node_modules/
+dist/
+backend/static/app/
+*.tsbuildinfo
+.cache/
+
+# IDE & OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local agent & conversation artifacts
+.serena/
+.system_generated/
+.playwright-mcp/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+plans/
+scroll-shots/
